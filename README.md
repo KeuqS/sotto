@@ -155,6 +155,25 @@ sotto grant <user-id>                      # share the active environment (they 
 sotto token create --name ci               # SOTTO_TOKEN: run/export in CI, no password needed
 ```
 
+### Organisation audit log
+
+Organisation owners and admins can inspect recent team activity with:
+
+```sh
+sotto org audit <org-id>
+sotto org audit <org-id> --limit 20
+```
+
+Use the ID printed by `sotto org create <name>` or listed by `sotto org ls`. Results are newest first;
+the default is 100 events, and the server clamps `--limit` to 1–500. The command shows one line per
+event as `timestamp  action  actor`, with optional `target=...`, `env=...`, and `(detail)` fields. It
+is a bounded activity/metadata view, not a way to retrieve secret values, and it does not provide
+pagination or a complete historical archive.
+
+On Sotto Cloud, the organisation needs effective Team entitlement, including an active Team trial.
+Self-hosted deployments skip this plan gate, but the caller still needs the owner/admin role. If no
+events are available, the command prints no rows and exits successfully.
+
 Machine tokens expire. A new token lasts 90 days unless you pass `--expires-in-days` with anything
 from 1 to 365, and `sotto token ls` shows when each one ends. Two weeks before that, `sotto run` and
 `sotto export` print a warning in the CI log. To replace a token, create a new one, update the CI
