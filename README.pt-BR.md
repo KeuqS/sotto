@@ -2,6 +2,14 @@
 
 *Tradução para o português (Brasil) do [README.md](README.md). O texto original em inglês é a versão oficial e prevalece em caso de divergência.*
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="web/public/mark-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="web/public/mark-light.svg">
+    <img src="web/public/mark-dark.svg" alt="Sotto" width="64" height="64">
+  </picture>
+</p>
+
 # Sotto
 
 Sincronização de segredos com criptografia de ponta a ponta para equipes de desenvolvimento. Pare de enviar seu `.env` pelo Slack.
@@ -24,7 +32,7 @@ e recuperação de conta por perda de chaves.
 | Componente | Disponível agora |
 | --- | --- |
 | Núcleo criptográfico | KDF, AEAD XChaCha20-Poly1305 + AAD, encapsulamento de chaves, concessões via sealed box X25519, a hierarquia de cofres de ambiente, reencapsulamento de chaves de dados (rotação), criptografia de links de compartilhamento e codificação de chaves, com vetores de referência nativo↔WASM |
-| CLI | `init`, gerenciamento local de segredos, injeção com `run`, sincronização `login`/`push`/`pull`, `setup` para novos dispositivos, `share`; equipes: `org create/ls/invite/members/remove`, `grant`, `clone`, `rotate`, `token create/ls/revoke` de máquina (com modo `SOTTO_TOKEN` para CI), `reset` para kit de emergência perdido |
+| CLI | `init`, gerenciamento local de segredos, injeção com `run`, sincronização `login`/`push`/`pull`, `setup` para novos dispositivos, `share`; equipes: `org create/ls/invite/members/remove/plan`, `grant`, `clone`, `rotate`, `token create/ls/revoke` de máquina (com modo `SOTTO_TOKEN` para CI), `reset` para kit de emergência perdido |
 | Servidor | Login OAuth + sessões, sincronização de conta + snapshots (escritas versionadas, ETag), organizações + membros + papéis, concessões de chaves de cofre por membro, rotação transacional de chaves, tokens de máquina, redefinição de conta e links de compartilhamento - apenas texto cifrado |
 | Web | Login (sessão com cookie), desbloqueio no navegador + descriptografia do cofre com sua própria concessão, criação e recebimento de links de uso único, e um painel de equipe: organizações, membros, convite por e-mail, compartilhamento de um ambiente com um membro |
 
@@ -139,6 +147,18 @@ sotto ls --env staging
 
 `--env` vale apenas para esse comando; `sotto env use` altera o ambiente padrão.
 
+Liste os ambientes, altere o padrão ou visualize uma cópia entre ambientes existentes:
+
+```sh
+sotto env ls                          # list environments; the active one is marked
+sotto env use staging                 # switch the project's active environment
+sotto env copy dev staging            # preview additions and updates without writing
+sotto env copy dev staging --confirm  # apply the copy; never delete destination keys
+```
+
+Sem `--confirm`, a cópia é uma simulação. Uma cópia confirmada adiciona e atualiza segredos,
+mas mantém intactas as chaves que existem apenas no destino.
+
 A exportação escreve texto puro, portanto precisa de `--reveal` em um terminal, assim como `sotto get`.
 Use `sotto share --no-copy` para desativar a cópia interativa, ou `--copy` para solicitá-la explicitamente.
 Essas opções controlam apenas a área de transferência; `--no-copy` não ignora os menus de limites do compartilhamento.
@@ -156,9 +176,35 @@ Trabalhando em equipe:
 sotto org create acme                      # prints the org id
 sotto init --org <org-id>                  # an org-owned project
 sotto org invite <org-id> dev@example.com  # invite an existing Sotto user
+sotto org plan <org-id>                    # tier, trial, and limits for this organisation
 sotto grant <user-id>                      # share the active environment (they run `sotto clone`)
 sotto token create --name ci               # SOTTO_TOKEN: run/export in CI, no password needed
 ```
+
+`sotto org plan <org-id>` lê a visão atual de direitos do servidor configurado para essa
+organização. É preciso estar autenticado (`sotto login`); o cofre local não precisa estar
+desbloqueado. Ele mostra o nível atribuído, o nível efetivo (cujos limites se aplicam agora), um
+fim de trial opcional e ou limites de membros e projetos da organização ou
+`limits: none (Team)`.
+
+Saída ilustrativa no estilo Free:
+
+```text
+tier:      free
+effective: free
+limits:    3 members, 1 org project(s)
+```
+
+Saída ilustrativa Team:
+
+```text
+tier:      team
+effective: team
+limits:    none (Team)
+```
+
+Esses exemplos são ilustrativos; organizações reais podem mostrar níveis, trials e limites
+diferentes.
 
 ### Log de auditoria da organização
 
@@ -181,10 +227,35 @@ Team ativo. Implantações auto-hospedadas ignoram essa verificação do plano, 
 ainda precisa ter o papel de proprietário ou administrador. Se não houver eventos, o comando não
 imprime linhas e termina com sucesso.
 
-Tokens de máquina expiram. Um token novo dura 90 dias, a menos que você passe `--expires-in-days`
-com um valor de 1 a 365, e `sotto token ls` mostra quando cada um termina. Duas semanas antes,
-`sotto run` e `sotto export` exibem um aviso no log da CI. Para substituir um token, crie um novo,
-atualize o segredo da CI e depois revogue o antigo com `sotto token revoke`.
+Tokens de máquina expiram. Um token novo dura 90 dias, a menos que você passe
+`--expires-in-days` com um valor de 1 a 365; `sotto token ls` mostra quando cada um termina.
+Duas semanas antes, `sotto run` e `sotto export` exibem um aviso no log da CI.
+
+Os comandos de token usam o acesso do usuário conectado e o ambiente selecionado. Em um ambiente
+de organização, somente um administrador ou proprietário pode gerenciar tokens de máquina. A
+lista contém apenas metadados de tokens ativos: tokens revogados ou expirados são omitidos, e
+não é possível recuperar pela lista a credencial exibida uma única vez ao criar um token com
+`sotto token create`. O JSON inclui `token_id`, `name`, `created_by`, `beneficiary_id`,
+`beneficiary_status`, `expires_at` e `expires_in_days`; os campos de expiração podem ser null.
+O `token_id` é o ID usado para revogar, não o nome do token nem o segredo `SOTTO_TOKEN`.
+
+Use estes comandos para consultar, substituir e revogar um token. A seleção do ambiente vale
+somente para este comando:
+
+```sh
+sotto token ls
+sotto token ls --json
+sotto --env staging token ls --json
+sotto token create --name ci
+sotto token revoke <token-id>
+```
+
+Para substituir um token de CI, identifique o ID antigo na lista, crie um substituto, atualize
+o segredo da CI e confirme que ela já usa o novo token; depois revogue o ID antigo com
+`sotto token revoke <token-id>`. A revogação impede imediatamente a autenticação desse token
+na API, mas não rotaciona a chave do ambiente. Em um ambiente de organização, consulte as
+orientações existentes de `sotto rotate` quando for necessário rotacionar a chave. Nem a
+revogação nem a rotação apagam texto puro que já tenha sido copiado.
 
 ### Status do Cloud
 
@@ -255,6 +326,36 @@ Pressione `t` para percorrer os temas com visualização ao vivo. Use as setas p
 e pressione `Enter` para salvar sua escolha ou `Esc` para cancelar. As
 [regras de precedência dos temas](#temas-de-saída) explicam como as opções do comando e as
 variáveis de ambiente afetam a preferência salva.
+
+### Consultar o estado local
+
+Execute `sotto status` para ver se existe uma identidade local, se a sessão está desbloqueada e
+qual projeto e ambiente o diretório atual seleciona. O comando lê o estado local. Ele não verifica
+a conexão com o servidor nem prova que todos os segredos armazenados podem ser descriptografados.
+
+```sh
+sotto status
+sotto status --json
+```
+
+Use `sotto status --json` em scripts. `initialized` indica se existe uma identidade local e
+`unlocked` indica se uma chave mestra está em cache. `project` contém `name` e `environment` da
+`sotto.toml` mais próxima ou é `null` fora de um projeto configurado. Um comando bem-sucedido
+pode mostrar `unlocked: false`; scripts que precisam de uma sessão desbloqueada devem verificar esse campo.
+
+Estes exemplos JSON são ilustrativos. Com uma `sotto.toml`, mas sem identidade local:
+
+```json
+{"initialized":false,"project":{"environment":"dev","name":"demo"},"unlocked":false}
+```
+
+Sem `sotto.toml` nem identidade local:
+
+```json
+{"initialized":false,"project":null,"unlocked":false}
+```
+
+Sem `sotto.toml`, nenhum projeto está selecionado. Um arquivo inválido ou ilegível causa um erro.
 
 ### Temas de saída
 

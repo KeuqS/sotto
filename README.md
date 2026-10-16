@@ -1,5 +1,13 @@
 [English](README.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Português (BR)](README.pt-BR.md)
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="web/public/mark-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="web/public/mark-light.svg">
+    <img src="web/public/mark-dark.svg" alt="Sotto" width="64" height="64">
+  </picture>
+</p>
+
 # Sotto
 
 End-to-end encrypted secret sync for developer teams. Stop Slacking your `.env`.
@@ -22,7 +30,7 @@ and lost-key account recovery.
 | Component | Available now |
 | --- | --- |
 | Crypto core | KDF, XChaCha20-Poly1305 AEAD + AAD, key wrapping, X25519 sealed-box grants, the environment vault hierarchy, data-key rewrap (rotation), share-link crypto, and key encoding - with native↔WASM golden vectors |
-| CLI | `init`, local secret management, `run`-style injection, `login`/`push`/`pull` sync, new-device `setup`, `share`; teams: `org create/ls/invite/members/remove`, `grant`, `clone`, `rotate`, machine `token create/ls/revoke` (with `SOTTO_TOKEN` mode for CI), lost-kit `reset` |
+| CLI | `init`, local secret management, `run`-style injection, `login`/`push`/`pull` sync, new-device `setup`, `share`; teams: `org create/ls/invite/members/remove/plan`, `grant`, `clone`, `rotate`, machine `token create/ls/revoke` (with `SOTTO_TOKEN` mode for CI), lost-kit `reset` |
 | Server | OAuth login + sessions, account + snapshot sync (versioned writes, ETag), orgs + memberships + roles, per-member vault-key grants, transactional key rotation, machine tokens, account reset, and share links - ciphertext only |
 | Web | Login (cookie session), in-browser unlock + vault decryption via your own grant, one-time share create/receive, and a team panel: orgs, members, invite by email, share an environment with a member |
 
@@ -134,6 +142,18 @@ sotto ls --env staging
 
 `--env` lasts for that command only; `sotto env use` changes the default.
 
+List environments, switch the default, or preview a copy between existing environments:
+
+```sh
+sotto env ls                          # list environments; the active one is marked
+sotto env use staging                 # switch the project's active environment
+sotto env copy dev staging            # preview additions and updates without writing
+sotto env copy dev staging --confirm  # apply the copy; never delete destination keys
+```
+
+Without `--confirm`, copying is a dry-run. A confirmed copy adds and updates secrets but
+leaves keys that exist only in the destination untouched.
+
 Export writes plaintext, so it needs `--reveal` on a terminal, just like `sotto get`.
 Use `sotto share --no-copy` to disable interactive copying, or `--copy` to request it explicitly.
 These flags control the clipboard only; `--no-copy` does not skip the share limit menus.
@@ -151,9 +171,33 @@ Working with a team:
 sotto org create acme                      # prints the org id
 sotto init --org <org-id>                  # an org-owned project
 sotto org invite <org-id> dev@example.com  # invite an existing Sotto user
+sotto org plan <org-id>                    # tier, trial, and limits for this organisation
 sotto grant <user-id>                      # share the active environment (they run `sotto clone`)
 sotto token create --name ci               # SOTTO_TOKEN: run/export in CI, no password needed
 ```
+
+`sotto org plan <org-id>` reads the configured server's current entitlement view for that
+organisation. You must be logged in (`sotto login`); the local vault does not need to be unlocked.
+It prints the assigned tier, the effective tier (the tier whose limits apply now), an optional
+trial end, and either member and organisation-project limits or `limits: none (Team)`.
+
+Illustrative Free-style output:
+
+```text
+tier:      free
+effective: free
+limits:    3 members, 1 org project(s)
+```
+
+Illustrative Team output:
+
+```text
+tier:      team
+effective: team
+limits:    none (Team)
+```
+
+These examples are illustrative; real organisations may show different tiers, trials, and limits.
 
 ### Organisation audit log
 
@@ -176,8 +220,33 @@ events are available, the command prints no rows and exits successfully.
 
 Machine tokens expire. A new token lasts 90 days unless you pass `--expires-in-days` with anything
 from 1 to 365, and `sotto token ls` shows when each one ends. Two weeks before that, `sotto run` and
-`sotto export` print a warning in the CI log. To replace a token, create a new one, update the CI
-secret, then revoke the old one with `sotto token revoke`.
+`sotto export` print a warning in the CI log.
+
+Token commands use the logged-in user's access and the selected environment. In an organisation
+environment, only an admin or owner can manage machine tokens. Listings contain active-token
+metadata only: revoked and expired tokens are omitted, and the credential printed once by
+`sotto token create` cannot be retrieved by listing. JSON includes `token_id`, `name`,
+`created_by`, `beneficiary_id`, `beneficiary_status`, `expires_at` and `expires_in_days`;
+expiry fields may be null. The `token_id` is the ID to revoke, not the token's name or the
+`SOTTO_TOKEN` secret.
+
+Use these commands to inspect, replace and revoke a token. The environment override applies to
+this command only:
+
+```sh
+sotto token ls
+sotto token ls --json
+sotto --env staging token ls --json
+sotto token create --name ci
+sotto token revoke <token-id>
+```
+
+To replace a CI token, identify the old ID in the listing, create a replacement, update the CI
+secret and verify CI uses it, then revoke the old ID with `sotto token revoke <token-id>`.
+Revocation immediately stops that token from authenticating to the API; it does not rotate the
+environment key. For an organisation environment, see the existing `sotto rotate` guidance
+when key rotation is needed. Neither revocation nor rotation can erase plaintext that was already
+copied.
 
 ### Cloud status
 
@@ -247,6 +316,36 @@ clears an active search or quits.
 Press `t` to browse themes with a live preview. Use the arrow keys to preview each theme, then
 press `Enter` to save your choice or `Esc` to cancel. The [theme precedence rules](#output-themes)
 explain how command and environment overrides affect the saved preference.
+
+### Inspect local status
+
+Run `sotto status` to see whether a local identity exists, whether the session is unlocked, and
+which project and environment the current directory selects. It reads local state. It does not
+check server connectivity or prove that every stored secret can be decrypted.
+
+```sh
+sotto status
+sotto status --json
+```
+
+Use `sotto status --json` in scripts. `initialized` reports whether a local identity exists, and
+`unlocked` reports whether a master key is cached. `project` contains `name` and `environment`
+from the nearest `sotto.toml`, or is `null` outside a configured project. A successful command can
+report `unlocked: false`, so scripts must inspect that field if they need an unlocked session.
+
+These JSON examples are illustrative. With a `sotto.toml` but no local identity:
+
+```json
+{"initialized":false,"project":{"environment":"dev","name":"demo"},"unlocked":false}
+```
+
+Without a `sotto.toml` or local identity:
+
+```json
+{"initialized":false,"project":null,"unlocked":false}
+```
+
+An absent `sotto.toml` means no project is selected. A malformed or unreadable file is an error.
 
 ### Output themes
 

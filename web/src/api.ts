@@ -325,6 +325,14 @@ export interface PersonalLifecycle {
   paidThroughDate: string | null;
   cancelAtPeriodEnd: boolean;
   portalUrl: string | null;
+  foundingPriceEndEpoch: number | null;
+  standardRenewalAmountPence: number | null;
+  foundingTransitionStatus: string | null;
+  foundingTransitionReason: string | null;
+}
+
+export async function fetchPersonalLifecycle(): Promise<PersonalLifecycle> {
+  return parsePersonalLifecycle(await authedJson<PersonalLifecycleResponse>("/billing/personal/lifecycle"));
 }
 
 export async function createPersonalPortal(): Promise<PersonalLifecycle> {
@@ -344,6 +352,10 @@ interface PersonalLifecycleResponse {
   paid_through_date: string | null;
   cancel_at_period_end: boolean;
   portal_url: string | null;
+  founding_price_end_epoch: number | null;
+  standard_renewal_amount_pence: number | null;
+  founding_transition_status: string | null;
+  founding_transition_reason: string | null;
 }
 
 function parsePersonalLifecycle(body: PersonalLifecycleResponse): PersonalLifecycle {
@@ -352,6 +364,10 @@ function parsePersonalLifecycle(body: PersonalLifecycleResponse): PersonalLifecy
     paidThroughDate: body.paid_through_date,
     cancelAtPeriodEnd: body.cancel_at_period_end,
     portalUrl: body.portal_url,
+    foundingPriceEndEpoch: body.founding_price_end_epoch,
+    standardRenewalAmountPence: body.standard_renewal_amount_pence,
+    foundingTransitionStatus: body.founding_transition_status,
+    foundingTransitionReason: body.founding_transition_reason,
   };
 }
 
@@ -412,36 +428,64 @@ export interface SponsoredSeat {
   effectiveFrom: number;
   effectiveUntil: number | null;
   state: string;
+  foundingPriceEndEpoch: number | null;
+  standardRenewalAmountPence: number | null;
+  foundingTransitionStatus: string | null;
+  foundingTransitionReason: string | null;
 }
 
 export async function fetchSponsoredSeats(orgId: string): Promise<SponsoredSeat[]> {
   const rows = await authedJson<Array<{
     seat_id: string; beneficiary_id: string; offer: string;
     effective_from: number; effective_until: number | null; state: string;
+    founding_price_end_epoch: number | null;
+    standard_renewal_amount_pence: number | null;
+    founding_transition_status: string | null;
+    founding_transition_reason: string | null;
   }>>(`/orgs/${encodeURIComponent(orgId)}/billing/sponsored/seats`);
-  return rows.map((row) => ({ seatId: row.seat_id, beneficiaryId: row.beneficiary_id, offer: row.offer, effectiveFrom: row.effective_from, effectiveUntil: row.effective_until, state: row.state }));
+  return rows.map((row) => ({ seatId: row.seat_id, beneficiaryId: row.beneficiary_id, offer: row.offer, effectiveFrom: row.effective_from, effectiveUntil: row.effective_until, state: row.state, foundingPriceEndEpoch: row.founding_price_end_epoch, standardRenewalAmountPence: row.standard_renewal_amount_pence, foundingTransitionStatus: row.founding_transition_status, foundingTransitionReason: row.founding_transition_reason }));
 }
 
 export interface SponsoredQuote {
   action: string;
+  offer: BillingOffer;
   seatCount: number;
   amountPence: number;
   currency: string;
   interval: string;
   quoteVersion: number;
   quoteExpiresAtEpoch: number;
+  founding: boolean;
+  foundingRemainingPlaces: number | null;
+  foundingTerm: string | null;
+  nextRenewalAmountPence: number;
 }
 
 export async function fetchSponsoredQuote(orgId: string, input: { action: string; offer: BillingOffer; beneficiaryIds: string[] }): Promise<SponsoredQuote> {
   const body = await postJson<{
-    action: string; seat_count: number; amount_pence: number; currency: string; interval: string;
+    action: string; offer: BillingOffer; seat_count: number; amount_pence: number; currency: string; interval: string;
     quote_version: number; quote_expires_at_epoch: number;
+    founding: boolean; founding_remaining_places: number | null; founding_term: string | null;
+    next_renewal_amount_pence: number;
   }>(`/orgs/${encodeURIComponent(orgId)}/billing/sponsored/quote`, {
     action: input.action,
     offer: input.offer,
     beneficiary_ids: input.beneficiaryIds,
   });
-  return { action: body.action, seatCount: body.seat_count, amountPence: body.amount_pence, currency: body.currency, interval: body.interval, quoteVersion: body.quote_version, quoteExpiresAtEpoch: body.quote_expires_at_epoch };
+  return {
+    action: body.action,
+    offer: body.offer,
+    seatCount: body.seat_count,
+    amountPence: body.amount_pence,
+    currency: body.currency,
+    interval: body.interval,
+    quoteVersion: body.quote_version,
+    quoteExpiresAtEpoch: body.quote_expires_at_epoch,
+    founding: body.founding,
+    foundingRemainingPlaces: body.founding_remaining_places,
+    foundingTerm: body.founding_term,
+    nextRenewalAmountPence: body.next_renewal_amount_pence,
+  };
 }
 
 export async function createSponsoredCheckout(orgId: string, input: {
@@ -1033,6 +1077,12 @@ export async function createShare(encBlob: Uint8Array, maxViews: number): Promis
     ...CREDS,
   });
   if (!resp.ok) {
+    if (resp.headers.get("x-sotto-error-code") === "quota") {
+      const explanation = (await readBody(() => resp.text())).trim();
+      if (explanation !== "") {
+        throw new Error(`Could not create the share link: ${explanation}`);
+      }
+    }
     throw new Error(`server error (${resp.status})`);
   }
   const body = (await readBody(() => resp.json())) as { token: string };
