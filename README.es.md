@@ -218,7 +218,7 @@ sotto org audit <org-id> --limit 20
 
 Usa el ID que imprime `sotto org create <name>` o que muestra `sotto org ls`. Los resultados aparecen
 primero con los eventos más recientes; el valor predeterminado es de 100 eventos y el servidor limita
-`--limit` al rango 1–500. El comando muestra una línea por evento con el formato `timestamp  action  actor` y, de forma opcional, los campos `target=...`, `env=...` y `(detail)`. Es una vista acotada de
+`--limit` al rango 1-500. El comando muestra una línea por evento con el formato `timestamp  action  actor` y, de forma opcional, los campos `target=...`, `env=...` y `(detail)`. Es una vista acotada de
 actividad y metadatos, no una forma de recuperar valores secretos; no ofrece paginación ni un archivo
 histórico completo.
 

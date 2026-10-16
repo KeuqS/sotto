@@ -217,7 +217,7 @@ sotto org audit <org-id> --limit 20
 
 Verwende die ID, die `sotto org create <name>` ausgibt oder `sotto org ls` auflistet. Die Ergebnisse
 werden zuerst mit den neuesten Ereignissen angezeigt; standardmäßig werden 100 Ereignisse abgerufen,
-und der Server begrenzt `--limit` auf 1–500. Der Befehl zeigt pro Ereignis eine Zeile im Format
+und der Server begrenzt `--limit` auf 1-500. Der Befehl zeigt pro Ereignis eine Zeile im Format
 `timestamp  action  actor` sowie optional `target=...`, `env=...` und `(detail)`. Es handelt sich um
 eine begrenzte Aktivitäts-/Metadatenansicht, nicht um eine Möglichkeit, Secret-Werte abzurufen; eine
 Seitennavigation oder ein vollständiges historisches Archiv gibt es nicht.
